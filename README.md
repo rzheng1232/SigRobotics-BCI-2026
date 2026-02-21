@@ -1,1 +1,1 @@
-incomplete, ill add the arduino code soon
+Code for Sig: Robotics BCI team 2026 Spring
