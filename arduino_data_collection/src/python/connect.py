@@ -4,58 +4,18 @@ from bleak import BleakScanner, BleakClient
 import matplotlib.pyplot as plt
 DEVICE_NAME = "SigRoboArd"
 CHAR_UUID = "abcdefab-1234-5678-1234-abcdefabcdef"
+NUM_CHANNELS = 4
 WINDOW_SIZE = 100
-PACKET_SIZE = 1350
-BYTES_PER_SAMPLE = 27
-NUM_CHANNELS = 8
-buffer = bytearray()
 data_channels = [[0.0] * WINDOW_SIZE for _ in range(NUM_CHANNELS)]
 data_queues = [collections.deque([0]*WINDOW_SIZE, maxlen=WINDOW_SIZE) for _ in range(NUM_CHANNELS)]
-
-def decode_24bit_signed(b1, b2, b3):
-    value = (b1 << 16) | (b2 << 8) | b3 
-    if value & 0x800000:  # sign bit
-        value -= 1 << 24
-    return value
-
 def on_notify(sender, data):
-    global buffer
+    print(len(data))
+    decoded = struct.unpack('<ffff', data)
+    for i, channel in enumerate(decoded):
+        data_channels[i].append(channel)
+        data_queues[i].append(channel)
+    print(f"CH1: {decoded[0]:.2f} | CH2: {decoded[1]:.2f} | CH3: {decoded[2]:.2f} | CH4: {decoded[3]:.2f}")
 
-    # Append BLE fragment
-    buffer.extend(data)
-
-    # Wait until full packet received
-    while len(buffer) >= PACKET_SIZE:
-
-        packet = buffer[:PACKET_SIZE]
-        buffer = buffer[PACKET_SIZE:]
-
-        # Decode packet
-        for sample_start in range(0, PACKET_SIZE, BYTES_PER_SAMPLE):
-
-            # Skip 3 status bytes
-            base = sample_start + 3
-
-            for ch in range(NUM_CHANNELS):
-
-                idx = base + ch * 3
-
-                b1 = packet[idx]
-                b2 = packet[idx + 1]
-                b3 = packet[idx + 2]
-
-                raw = decode_24bit_signed(b1, b2, b3)
-
-                # Convert to microvolts (same scaling as your UDP code)
-                microvolts = 1_000_000 * 4.5 * (raw / 16777215)
-
-                data_channels[ch].append(microvolts)
-                data_queues[ch].append(microvolts)
-
-        print(" | ".join(
-            f"CH{i+1}: {data_channels[i][-1]:.2f} µV"
-            for i in range(NUM_CHANNELS)
-        ))
 
 async def main():
     print("Scanning for device...")
@@ -67,7 +27,8 @@ async def main():
 
         for address, (device, adv_data) in devices.items():
             name = adv_data.local_name or device.name or "Unknown"
-            print(name)
+            if name != 'Unknown':
+                print(name)
             if name == DEVICE_NAME:
                 target = device
                 break

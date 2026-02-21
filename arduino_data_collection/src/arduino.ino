@@ -18,15 +18,15 @@ BLECharacteristic eegChar(
 
 int button_state = 0;
 int sc = 0;
-bool capture_armed = false;
+bool capture_armed = true;
 
-void sendCommand(byte command) {
+void sendSpiCommand(byte command) {
   digitalWrite(chip_select, LOW);
   SPI.transfer(command);
   digitalWrite(chip_select, HIGH);
 }
 
-void writeByte(byte registers, byte data) {
+void writeSpiByte(byte registers, byte data) {
   byte spi_data = 0x40 | registers;
   byte spi_data_array[3];
   spi_data_array[0] = spi_data;
@@ -66,35 +66,35 @@ void setup() {
 
   SPI.begin();
   SPI.beginTransaction(SPISettings(600000, MSBFIRST, SPI_MODE1));
-  sendCommand(0x02); // wakeup
-  sendCommand(0x0A); // stop
-  sendCommand(0x06); // reset
+  sendSpiCommand(0x02); // wakeup
+  sendSpiCommand(0x0A); // stop
+  sendSpiCommand(0x06); // reset
   delay(2);
-  sendCommand(0x11); // sdatac
+  sendSpiCommand(0x11); // sdatac
 
   // Write configurations
-  writeByte(0x01, 0x96);
-  writeByte(0x02, 0xD4);
-  writeByte(0x03, 0xFF);
-  writeByte(0x04, 0x00);
-  writeByte(0x0D, 0x00);
-  writeByte(0x0E, 0x00);
-  writeByte(0x0F, 0x00);
-  writeByte(0x10, 0x00);
-  writeByte(0x11, 0x00);
-  writeByte(0x15, 0x20);
-  writeByte(0x17, 0x00);
-  writeByte(0x05, 0x00);
-  writeByte(0x06, 0x00);
-  writeByte(0x07, 0x00);
-  writeByte(0x08, 0x00);
-  writeByte(0x09, 0x00);
-  writeByte(0x0A, 0x00);
-  writeByte(0x0B, 0x00);
-  writeByte(0x0C, 0x00);
-  writeByte(0x14, 0x80);
-  sendCommand(0x10);
-  sendCommand(0x08);
+  writeSpiByte(0x01, 0x96);
+  writeSpiByte(0x02, 0xD4);
+  writeSpiByte(0x03, 0xFF);
+  writeSpiByte(0x04, 0x00);
+  writeSpiByte(0x0D, 0x00);
+  writeSpiByte(0x0E, 0x00);
+  writeSpiByte(0x0F, 0x00);
+  writeSpiByte(0x10, 0x00);
+  writeSpiByte(0x11, 0x00);
+  writeSpiByte(0x15, 0x20);
+  writeSpiByte(0x17, 0x00);
+  writeSpiByte(0x05, 0x00);
+  writeSpiByte(0x06, 0x00);
+  writeSpiByte(0x07, 0x00);
+  writeSpiByte(0x08, 0x00);
+  writeSpiByte(0x09, 0x00);
+  writeSpiByte(0x0A, 0x00);
+  writeSpiByte(0x0B, 0x00);
+  writeSpiByte(0x0C, 0x00);
+  writeSpiByte(0x14, 0x80);
+  sendSpiCommand(0x10);
+  sendSpiCommand(0x08);
 
   // BLE setup
   Serial.begin(9600);
@@ -113,15 +113,17 @@ void loop() {
   BLEDevice central = BLE.central();
 
   if (central) {
-    while (central.connected()) {
+    while (central.connected()) 
+    {
       button_state = digitalRead(button_pin);
+      capture_armed = true;
 
-      if (button_state == HIGH) {
-        capture_armed = true;
-      }
-
-      if (capture_armed && button_state == LOW && digitalRead(drdy_pin) == LOW) {
-        capture_armed = false;
+      // if (button_state == HIGH) {
+      //   capture_armed = true;
+      // }
+      // if (capture_armed && button_state == LOW && digitalRead(drdy_pin) == LOW) {
+      if (capture_armed && digitalRead(drdy_pin) == LOW) {
+        // capture_armed = false;
         for (int i = 0; i < 27; i++) {
           if (sc < size_of_data) {
             output[sc] = readEegByte();
@@ -134,11 +136,11 @@ void loop() {
           sc = 0;
         }
       }
-
       BLE.poll();
+      
     }
 
     sc = 0;
-    capture_armed = false;
+    // capture_armed = false;
   }
 }
