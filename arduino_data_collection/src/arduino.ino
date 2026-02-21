@@ -4,43 +4,72 @@
 // ardEEG SPI pins
 const int chip_select = 10;
 const int button_pin = 7;
+const int drdy_pin = 5;
 const int size_of_data = 1350;
 byte output[size_of_data] = {};
+const int ble_chunk_size = 180;
 
 BLEService eegService("12345678-1234-1234-1234-1234567890ab");
 BLECharacteristic eegChar(
   "abcdefab-1234-5678-1234-abcdefabcdef",
   BLERead | BLENotify,
-  size_of_data
+  ble_chunk_size
 );
 
-int test_DRDY = 5;
 int button_state = 0;
 int sc = 0;
+bool capture_armed = false;
 
 void sendCommand(byte command) {
+  digitalWrite(chip_select, LOW);
   SPI.transfer(command);
+  digitalWrite(chip_select, HIGH);
 }
 
 void writeByte(byte registers, byte data) {
-  char spi_data = 0x40 | registers;
-  char spi_data_array[3];
+  byte spi_data = 0x40 | registers;
+  byte spi_data_array[3];
   spi_data_array[0] = spi_data;
   spi_data_array[1] = 0x00;
   spi_data_array[2] = data;
+  digitalWrite(chip_select, LOW);
   SPI.transfer(spi_data_array, 3);
+  digitalWrite(chip_select, HIGH);
+}
+
+byte readEegByte() {
+  digitalWrite(chip_select, LOW);
+  byte value = SPI.transfer(0xFF);
+  digitalWrite(chip_select, HIGH);
+  return value;
+}
+
+void sendOutputOverBle() {
+  int index = 0;
+  while (index < size_of_data) {
+    int chunk = size_of_data - index;
+    if (chunk > ble_chunk_size) {
+      chunk = ble_chunk_size;
+    }
+    eegChar.writeValue(output + index, chunk);
+    index += chunk;
+    BLE.poll();
+    delay(2);
+  }
 }
 
 void setup() {
   pinMode(button_pin, INPUT);
+  pinMode(drdy_pin, INPUT);
   pinMode(chip_select, OUTPUT);
-  digitalWrite(chip_select, LOW);
+  digitalWrite(chip_select, HIGH);
 
   SPI.begin();
   SPI.beginTransaction(SPISettings(600000, MSBFIRST, SPI_MODE1));
   sendCommand(0x02); // wakeup
   sendCommand(0x0A); // stop
   sendCommand(0x06); // reset
+  delay(2);
   sendCommand(0x11); // sdatac
 
   // Write configurations
@@ -72,7 +101,7 @@ void setup() {
   if (!BLE.begin()) {
     while (1);
   }
-  BLE.setLocalName("ardEEG-BLE");
+  BLE.setLocalName("SigRoboArd");
   BLE.setAdvertisedService(eegService);
   eegService.addCharacteristic(eegChar);
   BLE.addService(eegService);
@@ -82,25 +111,34 @@ void setup() {
 
 void loop() {
   BLEDevice central = BLE.central();
-  button_state = digitalRead(button_pin);
 
   if (central) {
     while (central.connected()) {
+      button_state = digitalRead(button_pin);
+
       if (button_state == HIGH) {
-        test_DRDY = 10;
+        capture_armed = true;
       }
-      if (test_DRDY == 10 && button_state == LOW) {
-        test_DRDY = 0;
+
+      if (capture_armed && button_state == LOW && digitalRead(drdy_pin) == LOW) {
+        capture_armed = false;
         for (int i = 0; i < 27; i++) {
-          output[sc] = SPI.transfer(0xFF);
-          sc = sc + 1;
+          if (sc < size_of_data) {
+            output[sc] = readEegByte();
+            sc = sc + 1;
+          }
         }
+
         if (sc == size_of_data) {
-          eegChar.writeValue(output, sc);
+          sendOutputOverBle();
           sc = 0;
         }
       }
+
       BLE.poll();
     }
+
+    sc = 0;
+    capture_armed = false;
   }
 }
