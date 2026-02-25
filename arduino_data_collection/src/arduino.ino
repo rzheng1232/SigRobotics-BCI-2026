@@ -5,9 +5,9 @@
 const int chip_select = 10;
 const int button_pin = 7;
 const int drdy_pin = 5;
-const int size_of_data = 1350;
+const int size_of_data = 135;  // 5 samples x 27 bytes
 byte output[size_of_data] = {};
-const int ble_chunk_size = 180;
+const int ble_chunk_size = 135;
 
 BLEService eegService("12345678-1234-1234-1234-1234567890ab");
 BLECharacteristic eegChar(
@@ -54,7 +54,6 @@ void sendOutputOverBle() {
     eegChar.writeValue(output + index, chunk);
     index += chunk;
     BLE.poll();
-    delay(2);
   }
 }
 
