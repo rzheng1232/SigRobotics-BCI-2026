@@ -214,7 +214,7 @@ def on_notify(sender, data):
                 data_queues[ch_index].append(microvolts)
                 
         # Print all 8 channels neatly
-        print(" | ".join(f"CH{i+1}: {data_queues[i][-1]:.0f} µV" for i in range(NUM_CHANNELS)))
+        # print(" | ".join(f"CH{i+1}: {data_queues[i][-1]:.0f} µV" for i in range(NUM_CHANNELS)))
 
 async def ble_main():
     print("Scanning for device...")
