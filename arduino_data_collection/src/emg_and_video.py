@@ -9,6 +9,9 @@ import cv2
 from ultralytics import YOLO
 import math
 import time
+import os
+import csv
+from datetime import datetime
 
 DEVICE_NAME = "SigRoboArd"
 CHAR_UUID = "abcdefab-1234-5678-1234-abcdefabcdef"
@@ -100,12 +103,66 @@ def draw_arm(frame, smoothed, raw_kpts, conf_threshold=0.5):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             print(f"  Left {name:8s} -> x: {points[idx][0]}, y: {points[idx][1]}")
 
+def save_recording(timestamp):
+    """Save video and EMG data to files"""
+    output_dir = "recordings"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Save EMG data to CSV
+    emg_filename = os.path.join(output_dir, f"emg_data_{timestamp}.csv")
+    if emg_recording_buffer[0]:  # Check if we have data
+        with open(emg_filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            # Write header
+            writer.writerow([f"Channel {i+1}" for i in range(NUM_CHANNELS)])
+            # Write data - transpose so each row is a time sample
+            max_len = max(len(ch) for ch in emg_recording_buffer)
+            for i in range(max_len):
+                row = []
+                for ch in range(NUM_CHANNELS):
+                    if i < len(emg_recording_buffer[ch]):
+                        row.append(emg_recording_buffer[ch][i])
+                    else:
+                        row.append('')
+                writer.writerow(row)
+        print(f"EMG data saved to {emg_filename}")
+    
+    # Save videos
+    if frame_buffer_0:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        h, w = frame_buffer_0[0].shape[:2]
+        video_filename_0 = os.path.join(output_dir, f"camera0_{timestamp}.mp4")
+        out_0 = cv2.VideoWriter(video_filename_0, fourcc, 30.0, (w, h))
+        for frame in frame_buffer_0:
+            out_0.write(frame)
+        out_0.release()
+        print(f"Camera 0 video saved to {video_filename_0}")
+    
+    if frame_buffer_2:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        h, w = frame_buffer_2[0].shape[:2]
+        video_filename_2 = os.path.join(output_dir, f"camera2_{timestamp}.mp4")
+        out_2 = cv2.VideoWriter(video_filename_2, fourcc, 30.0, (w, h))
+        for frame in frame_buffer_2:
+            out_2.write(frame)
+        out_2.release()
+        print(f"Camera 2 video saved to {video_filename_2}")
+
+
 # Create 8 separate queues, one for each channel
 buffer = bytearray()
 data_queues = [collections.deque([0.0] * WINDOW_SIZE, maxlen=WINDOW_SIZE) for _ in range(NUM_CHANNELS)]
 raw_data = [[], [], [], [], [], [], [], []]
 cleaner_data = [[], [], [], [], [], [], [], []]
 start_collect = False
+
+# Recording variables
+is_recording = False
+recording_start_time = None
+frame_buffer_0 = []
+frame_buffer_2 = []
+emg_recording_buffer = [[], [], [], [], [], [], [], []]  # One list per channel
 def decode_24bit_signed(b1, b2, b3):
     value = (b1 << 16) | (b2 << 8) | b3
     if value & 0x800000:  # sign bit
@@ -143,6 +200,9 @@ def on_notify(sender, data):
                 microvolts = 1_000_000 * (4.5 / 8388607.0) * raw
                 if (start_collect == True):
                     raw_data[ch_index].append(microvolts)
+                # If recording, also buffer for file save
+                if is_recording:
+                    emg_recording_buffer[ch_index].append(microvolts)
                 # If we get a massive spike, just repeat the last known good value
                 if (microvolts > 10000 or microvolts < -10000):
                     if len(data_queues[ch_index]) > 0:
@@ -178,33 +238,34 @@ async def ble_main():
         await client.start_notify(CHAR_UUID, on_notify)
         while True:
             await asyncio.sleep(0.05)
-cap0 = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-cap2 = cv2.VideoCapture(2, cv2.CAP_DSHOW)
-smoother_0 = LandmarkSmoother(ARM_INDICES, min_cutoff=0.7, beta=0.007)
-smoother_2 = LandmarkSmoother(ARM_INDICES, min_cutoff=0.7, beta=0.007)
+cap0 = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+cap2 = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+# smoother_0 = LandmarkSmoother(ARM_INDICES, min_cutoff=0.7, beta=0.007)
+# smoother_2 = LandmarkSmoother(ARM_INDICES, min_cutoff=0.7, beta=0.007)
 start_time = time.time()
 
 async def video_main():
-    t = time.time() - start_time
-    ret0, frame0 = cap0.read()
-    ret2, frame2 = cap2.read()
+    global is_recording, recording_start_time
+    
+    while True:
+        t = time.time() - start_time
+        ret0, frame0 = cap0.read()
+        ret2, frame2 = cap2.read()
 
-    if ret0:
-        results0 = model(frame0, verbose=False)
-        if results0[0].keypoints is not None and len(results0[0].keypoints.data) > 0:
-            kpts = results0[0].keypoints.data[0].cpu().numpy()
-            smoothed = smoother_0.smooth(kpts, t)
-            draw_arm(frame0, smoothed, kpts)
-        cv2.imshow("Camera 0 - Left Arm (YOLOv8)", frame0)
+        if ret0:
+            if is_recording:
+                frame_buffer_0.append(frame0.copy())
+            cv2.imshow("Camera 0 - Left Arm (YOLOv8)", frame0)
 
-    if ret2:
-        results2 = model(frame2, verbose=False)
-        if results2[0].keypoints is not None and len(results2[0].keypoints.data) > 0:
-            kpts = results2[0].keypoints.data[0].cpu().numpy()
-            smoothed = smoother_2.smooth(kpts, t)
-            print("Camera 2:")
-            draw_arm(frame2, smoothed, kpts)
-        cv2.imshow("Camera 2 - Left Arm (YOLOv8)", frame2)
+        if ret2:
+            if is_recording:
+                frame_buffer_2.append(frame2.copy())
+            cv2.imshow("Camera 2 - Left Arm (YOLOv8)", frame2)
+        
+        # Don't use cv2.waitKey() here - it blocks the qasync event loop
+        # Keyboard input will be handled by Qt's event system instead
+        
+        await asyncio.sleep(0.033)  # ~30 FPS, allows event loop to process other tasks
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
@@ -214,6 +275,27 @@ if __name__ == "__main__":
 
     win = pg.GraphicsLayoutWidget(title="BCI Signal Viewer — 8 Channels")
     win.resize(1400, 900) # Made the window big again
+    
+    # Add keyboard event handler
+    def keyPressEvent(event):
+        global is_recording, recording_start_time
+        if event.key() == QtCore.Qt.Key.Key_Space:  # SPACE - start recording
+            if not is_recording:
+                is_recording = True
+                recording_start_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+                frame_buffer_0.clear()
+                frame_buffer_2.clear()
+                for ch in range(NUM_CHANNELS):
+                    emg_recording_buffer[ch].clear()
+                print(f"\n>>> Recording started at {recording_start_time}")
+        elif event.key() == QtCore.Qt.Key.Key_Escape:  # ESC - stop recording and save
+            if is_recording:
+                is_recording = False
+                if frame_buffer_0 or frame_buffer_2 or any(emg_recording_buffer):
+                    save_recording(recording_start_time)
+                    print(">>> Recording stopped and saved")
+    
+    win.keyPressEvent = keyPressEvent
     win.show()
 
     COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
