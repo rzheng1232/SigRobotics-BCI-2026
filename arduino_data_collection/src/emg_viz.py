@@ -16,7 +16,9 @@ NUM_CHANNELS = 8
 # Create 8 separate queues, one for each channel
 buffer = bytearray()
 data_queues = [collections.deque([0.0] * WINDOW_SIZE, maxlen=WINDOW_SIZE) for _ in range(NUM_CHANNELS)]
-
+raw_data = [[], [], [], [], [], [], [], []]
+cleaner_data = [[], [], [], [], [], [], [], []]
+start_collect = False
 def decode_24bit_signed(b1, b2, b3):
     value = (b1 << 16) | (b2 << 8) | b3
     if value & 0x800000:  # sign bit
@@ -52,14 +54,16 @@ def on_notify(sender, data):
                 
                 raw = decode_24bit_signed(packet[idx], packet[idx + 1], packet[idx + 2])
                 microvolts = 1_000_000 * (4.5 / 8388607.0) * raw
-                
+                if (start_collect == True):
+                    raw_data[ch_index].append(microvolts)
                 # If we get a massive spike, just repeat the last known good value
                 if (microvolts > 10000 or microvolts < -10000):
                     if len(data_queues[ch_index]) > 0:
                         microvolts = data_queues[ch_index][-1]
                     else:
                         microvolts = 0.0
-                
+                if (start_collect==True):
+                    cleaner_data[ch_index].append(microvolts)
                 data_queues[ch_index].append(microvolts)
                 
         # Print all 8 channels neatly

@@ -83,15 +83,6 @@ void setup() {
   writeSpiByte(0x11, 0x00);
   writeSpiByte(0x15, 0x20);
   writeSpiByte(0x17, 0x00);
-
-  // writeSpiByte(0x05, 0x00);
-  // writeSpiByte(0x06, 0x00);
-  // writeSpiByte(0x07, 0x00);
-  // writeSpiByte(0x08, 0x00);
-  // writeSpiByte(0x09, 0x00);
-  // writeSpiByte(0x0A, 0x00);
-  // writeSpiByte(0x0B, 0x00);
-  // writeSpiByte(0x0C, 0x00);
   writeSpiByte(0x05, 0x00); 
   writeSpiByte(0x06, 0x00); 
   writeSpiByte(0x07, 0x00); 
@@ -125,30 +116,20 @@ void loop() {
     {
       button_state = digitalRead(button_pin);
       capture_armed = true;
-
-      // if (button_state == HIGH) {
-      //   capture_armed = true;
-      // }
-      // if (capture_armed && button_state == LOW && digitalRead(drdy_pin) == LOW) {
       if (capture_armed && digitalRead(drdy_pin) == LOW) {
-        // capture_armed = false;
         for (int i = 0; i < 27; i++) {
           if (sc < size_of_data) {
             output[sc] = readEegByte();
             sc = sc + 1;
           }
         }
-
         if (sc == size_of_data) {
           sendOutputOverBle();
           sc = 0;
         }
       }
       BLE.poll();
-      
     }
-
     sc = 0;
-    // capture_armed = false;
   }
 }
