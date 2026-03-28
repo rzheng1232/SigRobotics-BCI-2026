@@ -301,15 +301,15 @@ if __name__ == "__main__":
     COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
     curves = []
     
-    # Create 8 sub-plots dynamically
-    for i in range(NUM_CHANNELS):
+    # Create 8 sub-plots dynamically - TEMPORARILY SHOWING ONLY CHANNEL 8
+    for i in range(7, 8):  # Only channel 8 (index 7)
         p = win.addPlot(row=i, col=0, title=f"CH {i + 1}")
         p.setLabel('left', 'µV')
         p.setXRange(0, WINDOW_SIZE)
         p.setYRange(-5000, 5000)
         p.showGrid(x=True, y=True, alpha=0.2)
         # Only show the X-axis numbers on the very bottom plot to save space
-        p.getAxis('bottom').setStyle(showValues=(i == NUM_CHANNELS - 1))
+        p.getAxis('bottom').setStyle(showValues=True)
         
         curve = p.plot(pen=pg.mkPen(color=COLORS[i], width=1.5))
         curves.append(curve)
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     def update():
         # Update all 8 curves
         for i, curve in enumerate(curves):
-            raw_data = list(data_queues[i])
+            raw_data = list(data_queues[7])
             
             if len(raw_data) > 0:
                 dc_offset = sum(raw_data) / len(raw_data)
