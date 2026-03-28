@@ -5,6 +5,7 @@ import os
 import urllib.request
 import math
 import time
+import numpy as np
 
 # ─── Model Setup ───
 # Using "full" model for better accuracy + stability (swap to "heavy" if you want max accuracy)
@@ -50,7 +51,26 @@ class OneEuroFilter:
         self.dx_prev = dx_hat
         self.t_prev = t
         return x_hat
+def calculate_elbow_angle(smoothed_data):
+    # Extract coordinates as numpy arrays for vector math
+    # smoothed_data[idx] = (x, y, z)
+    shoulder = np.array(smoothed_data[LEFT_SHOULDER])
+    elbow    = np.array(smoothed_data[LEFT_ELBOW])
+    wrist    = np.array(smoothed_data[LEFT_WRIST])
 
+    # Create vectors (Elbow is the vertex)
+    ba = shoulder - elbow
+    bc = wrist - elbow
+
+    # Calculate the cosine of the angle using the dot product formula
+    # cos(theta) = (a·b) / (|a|*|b|)
+    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    
+    # Clip to handle floating point errors outside [-1, 1]
+    cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
+    
+    angle = np.arccos(cosine_angle)
+    return np.degrees(angle)
 class LandmarkSmoother:
     """Manages One Euro Filters for multiple landmarks, each with x/y/z."""
     def __init__(self, landmark_indices, min_cutoff=0.7, beta=0.007):
@@ -169,6 +189,7 @@ while True:
         if results2.pose_landmarks:
             h, w, _ = frame2.shape
             smoothed = smoother_2.smooth(results2.pose_landmarks[0], t)
+            print(calculate_elbow_angle(smoothed))
             print("Camera 2:")
             draw_arm(frame2, smoothed, results2.pose_landmarks[0], h, w)
 
