@@ -72,7 +72,7 @@ void setup() {
   sendSpiCommand(0x11); // sdatac
 
   // Write configurations
-  writeSpiByte(0x01, 0x96);
+  writeSpiByte(0x01, 0xAE);  // Changed from 0x96 to 0xAE for 250 SPS (DR bits set to 101)
   writeSpiByte(0x02, 0xD4);
   writeSpiByte(0x03, 0xFF);
   writeSpiByte(0x04, 0x00);
